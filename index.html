@@ -1,0 +1,958 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Five-Player Bid & Trump Card Game</title>
+  <style>
+    :root {
+      --bg: #0b1220;
+      --panel: #121a2b;
+      --accent: #4f7dff;
+      --accent-2: #26d07c;
+      --text: #e9f1ff;
+      --muted: #a7b6d9;
+      --warn: #ffb647;
+      --err: #ff6b6b;
+      --ok: #3fd67e;
+      --card-border: #cfd8e3;
+      --shadow: rgba(0,0,0,0.3);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      background: radial-gradient(1200px 600px at 20% -20%, #1a2b55, transparent),
+                  radial-gradient(1000px 800px at 120% 0%, #0e1a39, transparent),
+                  var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: grid;
+      place-items: start center;
+      padding: 20px;
+    }
+    .app {
+      width: min(100%, 1200px);
+      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+      border: 1px solid rgba(255,255,255,0.08);
+      backdrop-filter: blur(6px);
+      border-radius: 16px;
+      box-shadow: 0 10px 30px var(--shadow);
+      padding: 16px 16px 20px;
+    }
+    h1 { margin: 0 0 8px; font-size: 22px; }
+    .sub { margin: 0 0 14px; color: var(--muted); font-size: 13px; }
+
+    .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .panel {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 12px;
+      padding: 12px;
+    }
+    .lobby, .game { margin-top: 10px; }
+
+    input, select { 
+      background: #0f1730; color: var(--text); border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 8px; padding: 8px 10px; outline: none; min-width: 140px;
+    }
+    label { color: var(--muted); font-size: 13px; }
+
+    button {
+      background: #1f2b49; color: var(--text);
+      border: 1px solid rgba(255,255,255,0.12);
+      padding: 8px 12px; border-radius: 10px; font-weight: 600; letter-spacing: .2px;
+      cursor: pointer; transition: .15s ease all;
+    }
+    button.primary { background: linear-gradient(180deg, #5480ff, #3a66ff); border-color:#2f56e0; }
+    button.success { background: linear-gradient(180deg, #3bd07a, #25b965); border-color:#1ea75a; }
+    button.warn { background: linear-gradient(180deg, #ffb84f, #ff9d2f); border-color:#e67f12; color: #0f130f; }
+    button:disabled { opacity:.55; cursor: not-allowed; }
+
+    .cols { display:grid; grid-template-columns: 300px 1fr; gap: 12px; }
+    @media (max-width: 980px) { .cols { grid-template-columns: 1fr; } }
+
+    .seat { display:flex; justify-content:space-between; align-items:center; padding:6px 8px; border-radius:8px; background:rgba(255,255,255,0.02); margin:4px 0; }
+    .seat .name { font-weight:600; }
+    .seat .me { color: var(--ok); margin-left:6px; font-size:12px; }
+    .seat .host { color: var(--warn); margin-left:6px; font-size:12px; }
+
+    .section-title { margin: 8px 0 6px; font-size: 15px; color: #cfe1ff; }
+
+    .stack { display:flex; flex-direction:column; gap:8px; }
+
+    .status { white-space: pre-line; color:#e0ebff; font-size:13px; background:rgba(0,0,0,0.3); padding:10px; border-radius:8px; border:1px solid rgba(255,255,255,0.08); }
+
+    .inline { display:inline-flex; gap:8px; align-items:center; }
+
+    /* Cards UI */
+    .hand { display:flex; flex-wrap:wrap; gap:8px; min-height:120px; }
+    .card {
+      width: 68px; height: 100px; border-radius: 10px; background: #fff; color:#111;
+      border: 1px solid var(--card-border); box-shadow: 0 6px 14px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.8);
+      display:grid; grid-template-rows:auto 1fr auto; padding:6px; user-select:none; position:relative;
+    }
+    .card .rank { font-size:16px; font-weight:800; }
+    .card .center { font-size: 24px; display:grid; place-items:center; }
+    .card .bottom { transform: rotate(180deg); justify-self:end; }
+    .card.red { color:#d10f3a; }
+    .card.black { color:#141414; }
+    .card.dim { opacity:.5; filter:grayscale(.3); }
+    .card.playable { outline:2px solid #3a66ff; cursor: pointer; }
+
+    .trick { display:flex; gap:10px; min-height:110px; align-items:center; }
+
+    .badge { padding:2px 6px; border-radius: 6px; background: rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.12); font-size:12px; }
+    .badge.ok { background: rgba(63,214,126,0.15); border-color:#3fd67e; }
+    .badge.warn { background: rgba(255,182,71,0.15); border-color:#ffb647; color:#0f130f; }
+    .badge.err { background: rgba(255,107,107,0.15); border-color:#ff6b6b; }
+
+    .grid { display:grid; gap:8px; grid-template-columns: repeat(5, 1fr); }
+    @media (max-width: 980px) { .grid { grid-template-columns: repeat(2, 1fr); } }
+
+    .small { font-size:12px; color:var(--muted); }
+
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <h1>Five-Player Bid & Trump</h1>
+    <div class="sub">65-card custom deck, bidding with multiples of 5, secret partners by called cards, trump suit, trick-taking with follow-suit and duplicate-last-wins. Bidder team must meet/exceed their bid to win.</div>
+
+    <div class="cols">
+      <div class="panel">
+        <div class="section-title">Join Room</div>
+        <div class="stack">
+          <label>Room <input id="roomInput" placeholder="room-name" /></label>
+          <label>Nickname <input id="nameInput" placeholder="your name" /></label>
+          <button id="joinBtn" class="primary">Join</button>
+          <div id="joinStatus" class="status">Not connected.</div>
+        </div>
+
+        <div class="section-title">Players</div>
+        <div id="seats" class="stack"></div>
+
+        <div class="section-title">Controls</div>
+        <div class="stack">
+          <div class="row">
+            <button id="startBtn" class="success" disabled>Start Hand</button>
+            <button id="leaveBtn" class="warn" disabled>Leave Room</button>
+          </div>
+          <div class="small">Host starts when 5 players joined. Dealer seat rotates each hand; dealer holds the default bid of 280.</div>
+        </div>
+      </div>
+
+      <div class="panel game">
+        <div class="section-title">Game</div>
+        <div class="stack">
+          <div id="phase" class="badge">Phase: lobby</div>
+          <div id="info" class="status">—</div>
+
+          <div id="biddingUI" class="stack hidden">
+            <div class="badge warn">Bidding</div>
+            <div>Current Bid: <strong id="currentBid">—</strong> | Highest Bidder: <span id="highestBidder">—</span> | Turn: <span id="bidTurn">—</span></div>
+            <div class="row">
+              <input id="bidInput" type="number" step="5" min="280" max="500" placeholder="+5" style="width:120px" />
+              <button id="bidBtn" class="primary">Bid</button>
+              <button id="passBtn">Pass</button>
+            </div>
+            <div class="small">Bids must be multiples of 5 and at least +5 above current. Cap at 500.</div>
+          </div>
+
+          <div id="partnerUI" class="stack hidden">
+            <div class="badge warn">Secret Partner Calls</div>
+            <div>Allowed calls: <strong id="allowedCalls">0</strong></div>
+            <div id="callsContainer" class="stack"></div>
+            <div class="row">
+              <button id="submitCallsBtn" class="primary">Confirm Partners</button>
+            </div>
+            <div class="small">Select exact card instances (e.g., 2nd K♥). You cannot call a card you hold.</div>
+          </div>
+
+          <div id="trumpUI" class="stack hidden">
+            <div class="badge warn">Select Trump (sir_color)</div>
+            <div class="row">
+              <label class="inline"><input type="radio" name="trump" value="S"> Spades ♠</label>
+              <label class="inline"><input type="radio" name="trump" value="H"> Hearts ♥</label>
+              <label class="inline"><input type="radio" name="trump" value="D"> Diamonds ♦</label>
+              <label class="inline"><input type="radio" name="trump" value="C"> Clubs ♣</label>
+            </div>
+            <button id="confirmTrumpBtn" class="primary">Confirm Trump</button>
+          </div>
+
+          <div id="playUI" class="stack hidden">
+            <div class="row">
+              <div class="badge">Trump: <span id="trumpShow">—</span></div>
+              <div class="badge">Leader: <span id="leaderShow">—</span></div>
+              <div class="badge">Turn: <span id="turnShow">—</span></div>
+              <div class="badge">Trick #: <span id="trickNum">1</span>/13</div>
+            </div>
+            <div class="section-title">Current Trick</div>
+            <div id="trick" class="trick"></div>
+            <div class="section-title">Your Hand</div>
+            <div id="hand" class="hand"></div>
+            <div class="section-title">Scores</div>
+            <div class="row">
+              <div class="badge ok">Bid Team: <span id="bidTeamScore">0</span></div>
+              <div class="badge">Opp Team: <span id="oppTeamScore">0</span></div>
+              <div class="badge">Bid: <span id="finalBid">—</span></div>
+            </div>
+          </div>
+
+          <div id="endUI" class="stack hidden">
+            <div class="badge">Hand Complete</div>
+            <div id="resultText" class="status">—</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Firebase SDK (Compat for simplicity) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.3/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.3/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.3/firebase-auth-compat.js"></script>
+  <script>
+    // Inline Firebase config (copied from your existing project)
+    window.FIREBASE_CONFIG = {
+      apiKey: "AIzaSyCLmffn14gf4jhNIq-lTOvenQ20lI7ean8",
+      authDomain: "buzzer-1112a.firebaseapp.com",
+      databaseURL: "https://buzzer-1112a-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "buzzer-1112a",
+      storageBucket: "buzzer-1112a.firebasestorage.app",
+      messagingSenderId: "520551209869",
+      appId: "1:520551209869:web:5ca092f752a1fb56923bc4"
+    };
+    firebase.initializeApp(window.FIREBASE_CONFIG);
+    const db = firebase.database();
+    const auth = firebase.auth();
+    const AUTH_READY = auth.signInAnonymously()
+      .then(() => console.log('[auth] signed in anonymously'))
+      .catch(err => { console.error('[auth] error', err); return Promise.reject(err); });
+  </script>
+  <script>
+    // Utility
+    const SUITS = [ 'S', 'H', 'D', 'C' ];
+    const SUIT_SYM = { S: '♠', H: '♥', D: '♦', C: '♣' };
+    const SUIT_COLOR = { S: 'black', C:'black', H:'red', D:'red' };
+    const RANKS_ORDER = ['3','5','8','9','10','J','Q','K','A']; // ascending
+    const RANK_VALUE = { 'A':8, 'K':7, 'Q':6, 'J':5, '10':4, '9':3, '8':2, '5':1, '3':0 };
+
+    function uid() { try { return crypto.randomUUID(); } catch { return 'u-' + Math.random().toString(36).slice(2); } }
+    function now() { return Date.now(); }
+    function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
+    function cardKey(c){ return `${c.rank}${c.suit}-${c.instance}`; }
+    function pointsOf(card){
+      if (card.rank === '5') return 5;
+      if (card.rank === '10' || card.rank === 'J' || card.rank === 'Q' || card.rank === 'K' || card.rank === 'A') return 10;
+      if (card.rank === '3' && card.suit === 'S') return 30;
+      return 0;
+    }
+
+    function buildDeck65(){
+      const deck = [];
+      const ranks = ['A','K','Q','J','10','9','8','5'];
+      // two instances for all except 8♥ has only 1 instance (remove one)
+      for (const suit of SUITS){
+        for (const rank of ranks){
+          const count = (rank==='8' && suit==='H') ? 1 : 2;
+          for (let inst=1; inst<=count; inst++){
+            deck.push({ suit, rank, instance: inst });
+          }
+        }
+      }
+      // two copies of 3♠
+      deck.push({ suit:'S', rank:'3', instance:1 });
+      deck.push({ suit:'S', rank:'3', instance:2 });
+      if (deck.length !== 65) console.warn('Deck size != 65:', deck.length);
+      return deck;
+    }
+
+    function shuffleInPlace(arr){
+      // Fisher-Yates using crypto when available
+      for (let i = arr.length - 1; i > 0; i--) {
+        let j;
+        if (window.crypto?.getRandomValues){
+          const buf = new Uint32Array(1); crypto.getRandomValues(buf); j = buf[0] % (i+1);
+        } else {
+          j = Math.floor(Math.random()*(i+1));
+        }
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      return arr;
+    }
+
+    function nextSeat(idx){ return (idx+1)%5; }
+
+    function comparePlays(plays, leadSuit, trump){
+      // plays: [{seat, card, orderIndex}]
+      // Determine winner: highest trump if any; else highest of lead suit; if tie by rank+suit, later played wins
+      const suitRankValue = (c)=> RANK_VALUE[c.rank];
+      const bySuit = (arr, s)=> arr.filter(p=>p.card.suit===s);
+      const trumps = trump ? bySuit(plays, trump) : [];
+      const pool = trumps.length ? trumps : bySuit(plays, leadSuit);
+      // sort by rank value asc then keep last for tie-breaking by later play order
+      let best = null;
+      for (const p of pool){
+        if (!best) { best = p; continue; }
+        const pv = suitRankValue(p.card);
+        const bv = suitRankValue(best.card);
+        if (pv > bv || (pv===bv && p.orderIndex > best.orderIndex)) best = p;
+      }
+      return best; // {seat, card, orderIndex}
+    }
+
+    // Firebase references
+    function roomRef(room){ return db.ref('bidtrump/rooms/'+room); }
+
+    // App state
+    const LS = window.localStorage;
+    let my = {
+      uid: LS.getItem('btg_uid') || (LS.setItem('btg_uid', uid()), LS.getItem('btg_uid')),
+      name: LS.getItem('btg_name') || '',
+      room: LS.getItem('btg_room') || '',
+      seat: null,
+      isHost: false,
+    };
+
+    // DOM
+    const roomInput = document.getElementById('roomInput');
+    const nameInput = document.getElementById('nameInput');
+    const joinBtn = document.getElementById('joinBtn');
+    const startBtn = document.getElementById('startBtn');
+    const leaveBtn = document.getElementById('leaveBtn');
+    const joinStatus = document.getElementById('joinStatus');
+
+    // Reflect auth state in UI
+    if (typeof AUTH_READY !== 'undefined') {
+      joinBtn.disabled = true;
+      AUTH_READY.then(() => {
+        joinStatus.textContent = 'Connected (anonymous)';
+        joinBtn.disabled = false;
+      }).catch(err => {
+        joinStatus.textContent = 'Auth error: ' + (err?.message || err);
+      });
+    }
+    const seatsEl = document.getElementById('seats');
+    const phaseEl = document.getElementById('phase');
+    const infoEl = document.getElementById('info');
+
+    const biddingUI = document.getElementById('biddingUI');
+    const currentBidEl = document.getElementById('currentBid');
+    const highestBidderEl = document.getElementById('highestBidder');
+    const bidTurnEl = document.getElementById('bidTurn');
+    const bidInput = document.getElementById('bidInput');
+    const bidBtn = document.getElementById('bidBtn');
+    const passBtn = document.getElementById('passBtn');
+
+    const partnerUI = document.getElementById('partnerUI');
+    const allowedCallsEl = document.getElementById('allowedCalls');
+    const callsContainer = document.getElementById('callsContainer');
+    const submitCallsBtn = document.getElementById('submitCallsBtn');
+
+    const trumpUI = document.getElementById('trumpUI');
+    const confirmTrumpBtn = document.getElementById('confirmTrumpBtn');
+
+    const playUI = document.getElementById('playUI');
+    const handEl = document.getElementById('hand');
+    const trickEl = document.getElementById('trick');
+    const trumpShow = document.getElementById('trumpShow');
+    const leaderShow = document.getElementById('leaderShow');
+    const turnShow = document.getElementById('turnShow');
+    const trickNumEl = document.getElementById('trickNum');
+    const bidTeamScoreEl = document.getElementById('bidTeamScore');
+    const oppTeamScoreEl = document.getElementById('oppTeamScore');
+    const finalBidEl = document.getElementById('finalBid');
+
+    const endUI = document.getElementById('endUI');
+    const resultText = document.getElementById('resultText');
+
+    // Join / Leave
+    async function joinRoom(){
+      const room = roomInput.value.trim();
+      const name = nameInput.value.trim() || 'Player';
+      if (!room) { alert('Enter room'); return; }
+      try { await AUTH_READY; } catch(e) { alert('Authentication failed. Check Firebase rules.'); return; }
+      my.room = room; my.name = name; LS.setItem('btg_room', room); LS.setItem('btg_name', name);
+      const ref = roomRef(room);
+      try {
+        await ref.child('meta').transaction(meta => {
+          if (!meta) meta = { createdAt: now(), status:'lobby', dealerSeat:0 };
+          return meta;
+        });
+        // Assign seat atomically
+        const seatIdx = await ref.child('seats').transaction(seats => {
+          seats = seats || [null,null,null,null,null];
+          // If already seated (rejoin), keep seat
+          const already = seats.findIndex(s=> s && s.uid===my.uid);
+          if (already !== -1) return seats;
+          const idx = seats.findIndex(s => !s);
+          if (idx === -1) return; // full
+          seats[idx] = { uid: my.uid, name: my.name, connected: true };
+          return seats;
+        }).then(r=>{
+          if (!r.committed) throw new Error('Join not committed (full or permission)');
+          const seats = r.snapshot.val();
+          return seats.findIndex(s=> s && s.uid===my.uid);
+        });
+        my.seat = seatIdx;
+      } catch (e) {
+        console.error('[join] failed', e);
+        joinStatus.textContent = 'Join failed: ' + (e?.message || e);
+        return;
+      }
+      joinStatus.textContent = `Joined room '${room}' as ${name}. Seat ${my.seat}.`;
+      leaveBtn.disabled = false;
+
+      // Host is first seat or existing host
+      try {
+        const metaSnap = await ref.child('meta/host').once('value');
+        if (!metaSnap.exists()) await ref.child('meta/host').set(my.uid);
+        const hostId = (await ref.child('meta/host').once('value')).val();
+        my.isHost = hostId === my.uid;
+      } catch (e) {
+        console.warn('[host] detect failed', e);
+      }
+
+      // onDisconnect cleanup
+      try { ref.child(`seats/${my.seat}`).onDisconnect().set(null); } catch {}
+
+      subscribe(room);
+    }
+
+    async function leaveRoom(){
+      if (!my.room) return;
+      const ref = roomRef(my.room);
+      if (my.seat != null) await ref.child(`seats/${my.seat}`).set(null);
+      my.seat = null; my.room = ''; my.isHost = false;
+      joinStatus.textContent = 'Left room.';
+      leaveBtn.disabled = true; startBtn.disabled = true;
+      seatsEl.innerHTML = '';
+      phaseEl.textContent = 'Phase: lobby';
+      infoEl.textContent = '—';
+      hideAllPhaseUIs();
+    }
+
+    function hideAllPhaseUIs(){
+      biddingUI.classList.add('hidden');
+      partnerUI.classList.add('hidden');
+      trumpUI.classList.add('hidden');
+      playUI.classList.add('hidden');
+      endUI.classList.add('hidden');
+    }
+
+    // Subscription
+    let unsub = null;
+    function subscribe(room){
+      unsub && unsub();
+      const ref = roomRef(room);
+      const cb = ref.on('value', 
+        snap => {
+          const data = snap.val();
+          renderRoom(data);
+        },
+        err => {
+          console.error('[db] on value error', err);
+          infoEl.textContent = 'Database error: ' + (err?.message || err) + (err?.code ? ' ('+err.code+')' : '');
+        }
+      );
+      unsub = () => ref.off('value', cb);
+    }
+
+    function renderSeats(data){
+      const seats = (data?.seats)||[];
+      const host = data?.meta?.host;
+      seatsEl.innerHTML = '';
+      for (let i=0;i<5;i++){
+        const s = seats[i];
+        const el = document.createElement('div');
+        el.className = 'seat';
+        if (s){
+          el.innerHTML = `<span class="name">Seat ${i}: ${s.name}${s.uid===my.uid? ' <span class=\"me\">(you)</span>':''}${s.uid===host? ' <span class=\"host\">(host)</span>':''}</span><span class="badge">${s.connected? 'ready':'—'}</span>`;
+        } else {
+          el.innerHTML = `<span>Seat ${i}: empty</span>`;
+        }
+        seatsEl.appendChild(el);
+      }
+
+      const count = seats.filter(Boolean).length;
+      const canStart = my.isHost && count===5 && (data?.meta?.status==='lobby');
+      startBtn.disabled = !canStart;
+    }
+
+    function describeSeatName(data, idx){
+      const s = data?.seats?.[idx];
+      if (!s) return `Seat ${idx}`;
+      return `${s.name} (S${idx})`;
+    }
+
+    function setPhase(p){ phaseEl.textContent = 'Phase: ' + p; }
+
+    function renderRoom(data){
+      renderSeats(data);
+      const status = data?.meta?.status || 'lobby';
+      setPhase(status);
+
+      if (status==='lobby'){
+        hideAllPhaseUIs();
+        infoEl.textContent = 'Waiting for 5 players. Host can Start Hand.';
+        return;
+      }
+
+      if (status==='dealing'){
+        hideAllPhaseUIs();
+        infoEl.textContent = 'Dealing 65 cards (13 each)...';
+        return;
+      }
+
+      if (status==='bidding'){
+        hideAllPhaseUIs();
+        biddingUI.classList.remove('hidden');
+        const b = data.bidding||{};
+        currentBidEl.textContent = String(b.currentBid||'—');
+        highestBidderEl.textContent = (b.highestBidderSeat!=null)? describeSeatName(data, b.highestBidderSeat) : '—';
+        bidTurnEl.textContent = (b.turnSeat!=null)? describeSeatName(data, b.turnSeat) : '—';
+        infoEl.textContent = `Baseline: 280 (Dealer seat S${data.meta.dealerSeat}). Multiples of 5 only. Max 500.`;
+        // Enable actions if it's my turn and I'm not passed
+        const myTurn = b.turnSeat===my.seat;
+        const passed = b.passed?.[my.seat];
+        bidBtn.disabled = !(myTurn && !passed);
+        passBtn.disabled = !(myTurn && !passed);
+        if (myTurn && !passed){
+          bidInput.min = String((b.currentBid||280) + 5);
+          bidInput.max = '500';
+          bidInput.step = '5';
+          bidInput.value = String((b.currentBid||280) + 5);
+        }
+        return;
+      }
+
+      if (status==='partner_call'){
+        hideAllPhaseUIs();
+        partnerUI.classList.remove('hidden');
+        const b = data.bidding; // finalized bid
+        const bidderSeat = b.highestBidderSeat;
+        const isBidder = my.seat===bidderSeat;
+        const allowed = allowedCallsForBid(b.currentBid);
+        allowedCallsEl.textContent = String(allowed);
+        // Build call selectors only for bidder
+        callsContainer.innerHTML = '';
+        if (isBidder){
+          for (let i=0;i<allowed;i++){
+            const row = document.createElement('div');
+            row.className='row';
+            row.innerHTML = callSelectorHTML(data, i, my.seat);
+            callsContainer.appendChild(row);
+          }
+          submitCallsBtn.disabled = false;
+          infoEl.textContent = 'Select secret partner cards (exact instance). You cannot call cards you hold.';
+        } else {
+          submitCallsBtn.disabled = true;
+          infoEl.textContent = 'Bid winner is selecting secret partner cards...';
+        }
+        return;
+      }
+
+      if (status==='trump_select'){
+        hideAllPhaseUIs();
+        trumpUI.classList.remove('hidden');
+        const b = data.bidding;
+        const isBidder = my.seat===b.highestBidderSeat;
+        confirmTrumpBtn.disabled = !isBidder;
+        infoEl.textContent = isBidder ? 'Choose trump suit (sir_color).' : 'Waiting for bidder to choose trump.';
+        return;
+      }
+
+      if (status==='playing'){
+        hideAllPhaseUIs();
+        playUI.classList.remove('hidden');
+        renderPlay(data);
+        return;
+      }
+
+      if (status==='scoring' || status==='complete'){
+        hideAllPhaseUIs();
+        endUI.classList.remove('hidden');
+        const bid = data.bidding.currentBid;
+        const bidTeam = data.scores?.bidTeam||0;
+        const oppTeam = data.scores?.oppTeam||0;
+        const bidder = describeSeatName(data, data.bidding.highestBidderSeat);
+        const win = bidTeam >= bid ? `Bid team WINS (>= ${bid})` : `Opp team WINS (< ${bid})`;
+        resultText.textContent = `Bidder: ${bidder} | Bid: ${bid}\nBid Team: ${bidTeam} | Opp Team: ${oppTeam}\nResult: ${win}`;
+        return;
+      }
+    }
+
+    function allowedCallsForBid(bid){
+      if (bid>=450) return 3;
+      if (bid>=370) return 2;
+      return 1; // 280–365 inclusive
+    }
+
+    function callSelectorHTML(data, idx, bidderSeat){
+      // Build options based on existing deck composition and instances
+      // Options: ranks: A,K,Q,J,10,9,8,5 and 3♠
+      const ranks = ['A','K','Q','J','10','9','8','5'];
+      const suits = ['S','H','D','C'];
+      let html = '';
+      html += `<label>Rank <select data-call-rank="${idx}">`;
+      for (const r of [...ranks, '3']) html += `<option value="${r}">${r}</option>`;
+      html += `</select></label>`;
+      html += `<label>Suit <select data-call-suit="${idx}">`;
+      for (const s of suits) html += `<option value="${s}">${s} ${SUIT_SYM[s]}</option>`;
+      html += `</select></label>`;
+      html += `<label>Instance <select data-call-inst="${idx}">`;
+      html += `<option value="1">1st</option><option value="2">2nd</option>`;
+      html += `</select></label>`;
+      html += `<span class="small">(must exist and not be in your hand)</span>`;
+      return html;
+    }
+
+    // Host flow
+    async function startHand(){
+      const ref = roomRef(my.room);
+      const snap = await ref.once('value');
+      const data = snap.val();
+      if (!data) return;
+      const seats = (data.seats||[]).filter(Boolean);
+      if (seats.length!==5) { alert('Need 5 players to start'); return; }
+
+      // set status dealing
+      await ref.child('meta').update({ status:'dealing' });
+
+      // Build and deal
+      const deck = shuffleInPlace(buildDeck65());
+      const hands = { 0:[],1:[],2:[],3:[],4:[] };
+      for (let i=0;i<65;i++){
+        const seat = i%5;
+        hands[seat].push(deck[i]);
+      }
+
+      const dealerSeat = data.meta?.dealerSeat || 0;
+      const baselineSeat = dealerSeat;
+
+      await ref.update({ deck, hands });
+
+      // Init bidding
+      await ref.child('bidding').set({
+        currentBid: 280,
+        highestBidderSeat: baselineSeat,
+        baselineSeat,
+        turnSeat: nextSeat(baselineSeat),
+        passed: [false,false,false,false,false],
+        history: [{ seat: baselineSeat, bid: 280, ts: now() }]
+      });
+
+      await ref.child('meta').update({ status:'bidding' });
+    }
+
+    // Bidding actions
+    async function actBid(value){
+      const ref = roomRef(my.room);
+      await ref.child('bidding').transaction(b=>{
+        if (!b) return b;
+        if (b.turnSeat!==my.seat) return; // not my turn
+        const minBid = (b.currentBid||280) + 5;
+        const v = Number(value);
+        if (!Number.isFinite(v) || v<minBid || v>500 || v%5!==0) return b;
+        b.currentBid = v;
+        b.highestBidderSeat = my.seat;
+        b.history = (b.history||[]).concat({ seat: my.seat, bid: v, ts: now() });
+        // next turn to next active seat (not passed). If others passed, end auction.
+        let next = nextSeat(my.seat);
+        const allPassedExcept = (seat)=> (b.passed||[]).every((p,idx)=> idx===seat || p===true);
+        if (allPassedExcept(my.seat)){
+          // End bidding
+          return b;
+        }
+        // advance to next who hasn't passed
+        let safety=10;
+        while (safety--){
+          if (!b.passed?.[next]) break;
+          next = nextSeat(next);
+        }
+        b.turnSeat = next;
+        return b;
+      });
+      // Check for end condition and advance if done
+      await maybeFinishBidding();
+    }
+
+    async function actPass(){
+      const ref = roomRef(my.room);
+      await ref.child('bidding').transaction(b=>{
+        if (!b) return b;
+        if (b.turnSeat!==my.seat) return b;
+        b.passed = b.passed || [false,false,false,false,false];
+        b.passed[my.seat] = true;
+        // if everyone except highestBidder passed, end
+        const allPassedExcept = (seat)=> (b.passed||[]).every((p,idx)=> idx===seat || p===true);
+        if (allPassedExcept(b.highestBidderSeat)){
+          return b; // end
+        }
+        // else advance turn to next not passed
+        let next = nextSeat(my.seat);
+        let safety=10;
+        while (safety--){
+          if (!b.passed?.[next]) break;
+          next = nextSeat(next);
+        }
+        b.turnSeat = next;
+        return b;
+      });
+      await maybeFinishBidding();
+    }
+
+    async function maybeFinishBidding(){
+      const ref = roomRef(my.room);
+      const snap = await ref.child('bidding').once('value');
+      const b = snap.val();
+      if (!b) return;
+      const allPassedExcept = (seat)=> (b.passed||[]).every((p,idx)=> idx===seat || p===true);
+      if (allPassedExcept(b.highestBidderSeat)){
+        // advance to partner_call
+        await ref.update({
+          calls: { allowed: allowedCallsForBid(b.currentBid), list: [] },
+          trump: null,
+        });
+        await ref.child('meta').update({ status:'partner_call' });
+      }
+    }
+
+    // Partner calls
+    function readCallsFromUI(data){
+      const selectsRank = callsContainer.querySelectorAll('select[data-call-rank]');
+      const selectsSuit = callsContainer.querySelectorAll('select[data-call-suit]');
+      const selectsInst = callsContainer.querySelectorAll('select[data-call-inst]');
+      const calls = [];
+      for (let i=0;i<selectsRank.length;i++){
+        const rank = selectsRank[i].value;
+        const suit = selectsSuit[i].value;
+        let instance = Number(selectsInst[i].value);
+        // Validate existence in deck
+        const exists = cardInstanceExists(rank, suit);
+        if (!exists.includes(instance)) instance = exists[0] || 1;
+        calls.push({ rank, suit, instance });
+      }
+      // Remove duplicates
+      const seen = new Set();
+      const uniq = [];
+      for (const c of calls){
+        const k = `${c.rank}-${c.suit}-${c.instance}`;
+        if (!seen.has(k)) { seen.add(k); uniq.push(c); }
+      }
+      return uniq;
+    }
+
+    function cardInstanceExists(rank, suit){
+      // returns array of valid instance numbers for that rank/suit in our deck
+      if (rank==='3' && suit==='S') return [1,2];
+      if (rank==='8' && suit==='H') return [1];
+      const valid = ['A','K','Q','J','10','9','8','5'];
+      if (!valid.includes(rank)) return [];
+      if (!['S','H','D','C'].includes(suit)) return [];
+      return [1,2];
+    }
+
+    async function submitCalls(){
+      const ref = roomRef(my.room);
+      const snap = await ref.once('value');
+      const data = snap.val();
+      const bidderSeat = data.bidding.highestBidderSeat;
+      if (my.seat !== bidderSeat) return;
+      const allowed = allowedCallsForBid(data.bidding.currentBid);
+      const calls = readCallsFromUI(data).slice(0, allowed);
+      // Validate not in bidder hand
+      const myHand = (data.hands?.[String(my.seat)])||[];
+      const myKeys = new Set(myHand.map(cardKey));
+      const filtered = calls.filter(c => !myKeys.has(cardKey(c)));
+      if (filtered.length < calls.length){ alert('You cannot call a card you hold. Removed invalid calls.'); }
+      await ref.child('calls').set({ allowed, list: filtered });
+      await ref.child('meta').update({ status:'trump_select' });
+    }
+
+    // Trump
+    async function confirmTrump(){
+      const val = document.querySelector('input[name="trump"]:checked');
+      if (!val) { alert('Select a trump suit'); return; }
+      const ref = roomRef(my.room);
+      await ref.update({ trump: val.value });
+      // Initialize play state
+      const data = (await ref.once('value')).val();
+      const leader = data.bidding.highestBidderSeat;
+      await ref.update({
+        play: {
+          leaderSeat: leader,
+          turnSeat: leader,
+          trickNum: 1,
+          trick: { leadSuit: null, plays: [] },
+          // scoring buckets (we attribute tricks when resolved)
+          bidTeamSeats: [leader], // only bidder known at start; partners revealed on matching play
+          revealedPartners: [],
+          bidTeamPoints: 0,
+          oppTeamPoints: 0,
+        }
+      });
+      await ref.child('meta').update({ status:'playing' });
+    }
+
+    // Play
+    function myHand(data){ return (data.hands?.[String(my.seat)])||[]; }
+    function isMyTurn(data){ return data.play?.turnSeat===my.seat; }
+
+    function renderCardHTML(c, extraClass=''){
+      const color = SUIT_COLOR[c.suit]==='red' ? 'red' : 'black';
+      const r = c.rank; const s = SUIT_SYM[c.suit];
+      return `<div class="card ${color} ${extraClass}" data-rank="${r}" data-suit="${c.suit}" data-inst="${c.instance}">
+        <div class="rank">${r}</div>
+        <div class="center">${s}</div>
+        <div class="rank bottom">${r}</div>
+      </div>`;
+    }
+
+    function renderPlay(data){
+      const play = data.play;
+      const trump = data.trump;
+      const trick = play.trick;
+      const leader = play.leaderSeat;
+      const turn = play.turnSeat;
+      const trickNum = play.trickNum;
+
+      trumpShow.textContent = trump ? `${trump} ${SUIT_SYM[trump]}` : '—';
+      leaderShow.textContent = describeSeatName(data, leader);
+      turnShow.textContent = describeSeatName(data, turn);
+      trickNumEl.textContent = String(trickNum);
+      bidTeamScoreEl.textContent = String(play.bidTeamPoints||0);
+      oppTeamScoreEl.textContent = String(play.oppTeamPoints||0);
+      finalBidEl.textContent = String(data.bidding.currentBid);
+
+      // Trick on table
+      trickEl.innerHTML = '';
+      const plays = trick.plays||[];
+      for (const p of plays){
+        const seatName = describeSeatName(data, p.seat);
+        const el = document.createElement('div');
+        el.innerHTML = `<div class="small">${seatName}</div>` + renderCardHTML(p.card);
+        trickEl.appendChild(el);
+      }
+
+      // Hand
+      const hand = myHand(data);
+      const playableKeys = new Set(playableCards(data).map(cardKey));
+      handEl.innerHTML = '';
+      for (const c of hand){
+        const k = cardKey(c);
+        const playable = playableKeys.has(k) && isMyTurn(data);
+        const cardElHTML = renderCardHTML(c, playable? 'playable': 'dim');
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = cardElHTML;
+        const el = wrapper.firstElementChild;
+        if (playable){ el.addEventListener('click', ()=> playCard(c)); }
+        handEl.appendChild(el);
+      }
+
+      // Info
+      const leadSuit = trick.leadSuit || '—';
+      infoEl.textContent = `Lead suit: ${leadSuit==='—'?'—':leadSuit+' '+SUIT_SYM[leadSuit]} | ${isMyTurn(data)? 'Your turn.': 'Waiting for '+describeSeatName(data, turn)}`;
+    }
+
+    function playableCards(data){
+      const play = data.play; const trick = play.trick; const hand = myHand(data);
+      if (!hand.length) return [];
+      if (!trick.leadSuit) return hand; // any card can lead
+      // If I have lead suit, must play it
+      const haveLead = hand.filter(c=>c.suit===trick.leadSuit);
+      if (haveLead.length) return haveLead;
+      return hand; // else any card
+    }
+
+    async function playCard(card){
+      const ref = roomRef(my.room);
+      await ref.transaction(room => {
+        if (!room || room.meta?.status!=='playing') return room;
+        const play = room.play; if (!play) return room;
+        if (play.turnSeat !== my.seat) return room; // not my turn
+        const myHandArr = room.hands?.[String(my.seat)] || [];
+        const k = cardKey(card);
+        const idx = myHandArr.findIndex(c => cardKey(c)===k);
+        if (idx===-1) return room; // not present
+        // Remove from hand
+        myHandArr.splice(idx,1);
+        room.hands[String(my.seat)] = myHandArr;
+        // Init trick
+        play.trick = play.trick || { leadSuit:null, plays:[] };
+        if (!play.trick.leadSuit) play.trick.leadSuit = card.suit;
+        // Append play with orderIndex
+        const orderIndex = (play.trick.plays?.length||0) + 1;
+        play.trick.plays = (play.trick.plays||[]).concat({ seat: my.seat, card, orderIndex });
+
+        // Reveal partner if matches a called card
+        const calls = (room.calls?.list)||[];
+        const ck = k;
+        for (const cc of calls){
+          if (cardKey(cc)===ck){
+            play.bidTeamSeats = Array.from(new Set([...(play.bidTeamSeats||[]), my.seat]));
+          }
+        }
+
+        // Advance turn or resolve trick if 5 played
+        if (play.trick.plays.length < 5){
+          // Next seat
+          let next = nextSeat(play.turnSeat);
+          play.turnSeat = next;
+        } else {
+          // Resolve trick
+          const winner = comparePlays(play.trick.plays, play.trick.leadSuit, room.trump);
+          const trickPoints = play.trick.plays.reduce((sum,p)=> sum + pointsOf(p.card), 0);
+          const bidTeamSet = new Set(play.bidTeamSeats||[]);
+          if (bidTeamSet.has(winner.seat)) play.bidTeamPoints = (play.bidTeamPoints||0) + trickPoints;
+          else play.oppTeamPoints = (play.oppTeamPoints||0) + trickPoints;
+          // Next trick setup
+          play.leaderSeat = winner.seat;
+          play.turnSeat = winner.seat;
+          play.trickNum = (play.trickNum||1) + 1;
+          play.trick = { leadSuit:null, plays:[] };
+
+          // If all cards played (hand sizes all 0), go scoring
+          const done = [0,1,2,3,4].every(s => (room.hands?.[String(s)]||[]).length===0);
+          if (done){
+            room.scores = { bidTeam: play.bidTeamPoints||0, oppTeam: play.oppTeamPoints||0 };
+            room.meta.status = 'scoring';
+            // rotate dealer
+            room.meta.dealerSeat = nextSeat(room.meta.dealerSeat||0);
+          }
+        }
+        room.play = play;
+        return room;
+      });
+    }
+
+    // Wire UI
+    joinBtn.addEventListener('click', joinRoom);
+    leaveBtn.addEventListener('click', leaveRoom);
+    startBtn.addEventListener('click', startHand);
+
+    bidBtn.addEventListener('click', async ()=>{
+      const v = Number(bidInput.value||0);
+      await actBid(v);
+    });
+    passBtn.addEventListener('click', actPass);
+
+    submitCallsBtn.addEventListener('click', submitCalls);
+    confirmTrumpBtn.addEventListener('click', confirmTrump);
+
+    // Prefill inputs
+    if (my.room) roomInput.value = my.room;
+    if (my.name) nameInput.value = my.name;
+
+    // Enable/disable buttons based on joined
+    const enableButtons = () => {
+      const joined = !!my.room && my.seat!=null;
+      leaveBtn.disabled = !joined;
+    };
+    setInterval(enableButtons, 500);
+  </script>
+</body>
+</html>
